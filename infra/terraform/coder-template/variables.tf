@@ -1,5 +1,17 @@
+variable "arch" {
+  description = "Architecture of the workspace"
+  type        = string
+  default     = "amd64"
+}
+
+variable "os" {
+  description = "Operating system of the workspace"
+  type        = string
+  default     = "linux"
+}
+
 variable "repo_url" {
-  description = "Git repository URL to clone into the workspace"
+  description = "URL of the repository to clone"
   type        = string
   default     = ""
 }
@@ -7,17 +19,17 @@ variable "repo_url" {
 variable "docker_image" {
   description = "Docker image to use for the workspace"
   type        = string
-  default     = "codercom/enterprise-base:ubuntu"
+  default     = "coder-base:latest"
 }
 
-variable "arch" {
-  description = "Architecture of the workspace (amd64 or arm64)"
-  type        = string
-  default     = "amd64"
+variable "enable_nested_virt" {
+  description = "Enable Nested Virtualization (privileged mode + /dev/kvm)"
+  type        = bool
+  default     = true
 }
 
-variable "os" {
-  description = "Operating system of the workspace (linux, darwin, windows)"
+variable "dotfiles_url" {
+  description = "URL of the dotfiles repository to clone"
   type        = string
-  default     = "linux"
+  default     = ""
 }

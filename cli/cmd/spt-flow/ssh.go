@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 )
 
@@ -61,7 +63,13 @@ var sshCmd = &cobra.Command{
 		// Let's assume "coder-template" for now as fallback, or better, implement a StartWorkspace method.
 		// For this story, let's reuse EnsureWorkspace but maybe we should split it later.
 		templateName := "coder-template"
-		ws, err := client.EnsureWorkspace(cmd.Context(), workspaceName, templateName)
+		ws, err := client.EnsureWorkspace(cmd.Context(), coder.EnsureWorkspaceOptions{
+			Name:         workspaceName,
+			TemplateName: templateName,
+			// No extra parameters for SSH for now (e.g. dotfiles not relevant on reconnect usually,
+			// though EnsureWorkspace might recreate/update parameters if we supported that.
+			// For now, empty params is fine for re-ensuring).
+		})
 		if err != nil {
 			return fmt.Errorf("failed to ensure workspace is running: %w", err)
 		}
@@ -100,6 +108,29 @@ var sshCmd = &cobra.Command{
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 		defer session.Close()
+
+		// SSH Agent Forwarding
+		if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+			fmt.Println("Forwarding SSH agent...")
+			agentConn, err := net.Dial("unix", sock)
+			if err != nil {
+				fmt.Printf("Warning: Failed to connect to SSH_AUTH_SOCK: %v\n", err)
+			} else {
+				agentClient := agent.NewClient(agentConn)
+				// Request forwarding from remote
+				if err := agent.RequestAgentForwarding(session); err != nil {
+					fmt.Printf("Warning: Failed to request agent forwarding: %v\n", err)
+				} else {
+					// Handle the forwarding requests
+					go func() {
+						if err := agent.ForwardToAgent(sshClient, agentClient); err != nil {
+							// checking for EOF/closed conn is tricky here without verbose logging
+							// usually just ignore
+						}
+					}()
+				}
+			}
+		}
 
 		// Setup terminal
 		fd := int(os.Stdin.Fd())

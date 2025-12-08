@@ -13,15 +13,41 @@ resource "coder_agent" "main" {
         git clone "${var.repo_url}" "$REPO_DIR"
       fi
     fi
+    
+    # Dotfiles personalization
+    if [ -n "${var.dotfiles_url}" ]; then
+      echo "Installing dotfiles from ${var.dotfiles_url}..."
+      DOTFILES_DIR="$HOME/dotfiles"
+      if [ ! -d "$DOTFILES_DIR" ]; then
+        git clone "${var.dotfiles_url}" "$DOTFILES_DIR"
+      fi
 
-    # Install code-server
-    curl -fsSL https://code-server.dev/install.sh | sh
+      if [ -d "$DOTFILES_DIR" ]; then
+        # Look for install scripts
+        for script in install.sh setup.sh bootstrap.sh; do
+          if [ -f "$DOTFILES_DIR/$script" ]; then
+            echo "Executing $script..."
+            chmod +x "$DOTFILES_DIR/$script"
+            # execute in subshell, ignore failure
+            (cd "$DOTFILES_DIR" && ./$script) || echo "Dotfiles script failed, continuing..."
+            break
+          fi
+        done
+      fi
+    fi
+
+    # Install code-server (pre-installed in image, just launch)
     code-server --auth none --port 13337 >/dev/null 2>&1 &
   EOT
 }
 
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.id}-home"
+  # Lifecycle: This volume perists across workspace stops/starts and rebuilds.
+  # Data in /home/coder is safe.
+  lifecycle {
+    prevent_destroy = false # Allow manual destruction if needed, but defaults preserve it.
+  }
 }
 
 resource "docker_container" "workspace" {
@@ -38,6 +64,17 @@ resource "docker_container" "workspace" {
   entrypoint = ["sh", "-c", coder_agent.main.init_script]
   env        = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
   
+  # Nested Virtualization Support
+  privileged = var.enable_nested_virt
+
+  dynamic "devices" {
+    for_each = var.enable_nested_virt ? [1] : []
+    content {
+      host_path      = "/dev/kvm"
+      container_path = "/dev/kvm"
+    }
+  }
+
   host {
     host = "host.docker.internal"
     ip   = "host-gateway"

@@ -28,31 +28,56 @@ func NewClient(rawURL, token string) (*Client, error) {
 	return &Client{sdk: client}, nil
 }
 
-func (c *Client) EnsureWorkspace(ctx context.Context, name, templateName string) (*codersdk.Workspace, error) {
-	// Check if workspace exists
+func (c *Client) GetWorkspace(ctx context.Context, name string) (*codersdk.Workspace, error) {
 	ws, err := c.sdk.WorkspaceByOwnerAndName(ctx, codersdk.Me, name, codersdk.WorkspaceOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return &ws, nil
+}
+
+type EnsureWorkspaceOptions struct {
+	Name         string
+	TemplateName string
+	Parameters   map[string]string
+}
+
+func (c *Client) EnsureWorkspace(ctx context.Context, opts EnsureWorkspaceOptions) (*codersdk.Workspace, error) {
+	// Check if workspace exists
+	ws, err := c.GetWorkspace(ctx, opts.Name)
 	if err == nil {
 		// Workspace exists, ensure it's running
-		return c.ensureRunning(ctx, ws)
+		return c.ensureRunning(ctx, *ws)
 	}
 
 	// Create workspace
 	// First, find the template
-	template, err := c.findTemplateByName(ctx, templateName)
+	template, err := c.findTemplateByName(ctx, opts.TemplateName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find template %q: %w", templateName, err)
+		return nil, fmt.Errorf("failed to find template %q: %w", opts.TemplateName, err)
+	}
+
+	// Build rich parameters
+	var richParams []codersdk.WorkspaceBuildParameter
+	for k, v := range opts.Parameters {
+		richParams = append(richParams, codersdk.WorkspaceBuildParameter{
+			Name:  k,
+			Value: v,
+		})
 	}
 
 	// Create the workspace
-	ws, err = c.sdk.CreateUserWorkspace(ctx, codersdk.Me, codersdk.CreateWorkspaceRequest{
-		TemplateID:        template.ID,
-		Name:              name,
-		AutostartSchedule: ptr("CRON_TZ=UTC 30 9 * * 1-5"),   // Default 9:30 AM Mon-Fri
-		TTLMillis:         ptr(8 * time.Hour.Milliseconds()), // Default 8 hours
+	wsVal, err := c.sdk.CreateUserWorkspace(ctx, codersdk.Me, codersdk.CreateWorkspaceRequest{
+		TemplateID:          template.ID,
+		Name:                opts.Name,
+		AutostartSchedule:   ptr("CRON_TZ=UTC 30 9 * * 1-5"),   // Default 9:30 AM Mon-Fri
+		TTLMillis:           ptr(8 * time.Hour.Milliseconds()), // Default 8 hours
+		RichParameterValues: richParams,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
+	ws = &wsVal
 
 	// Wait for build to complete
 	if err := c.waitForBuild(ctx, ws.LatestBuild.ID); err != nil {
@@ -60,12 +85,13 @@ func (c *Client) EnsureWorkspace(ctx context.Context, name, templateName string)
 	}
 
 	// Refresh workspace
-	ws, err = c.sdk.Workspace(ctx, ws.ID)
+	wsVal, err = c.sdk.Workspace(ctx, ws.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to refresh workspace: %w", err)
 	}
+	ws = &wsVal
 
-	return &ws, nil
+	return ws, nil
 }
 
 func (c *Client) findTemplateByName(ctx context.Context, name string) (codersdk.Template, error) {
@@ -84,7 +110,7 @@ func (c *Client) findTemplateByName(ctx context.Context, name string) (codersdk.
 	return codersdk.Template{}, fmt.Errorf("template not found")
 }
 
-func (c *Client) ensureRunning(ctx context.Context, ws codersdk.Workspace) (*codersdk.Workspace, error) {
+func (c *Client) StartWorkspace(ctx context.Context, ws codersdk.Workspace) (*codersdk.Workspace, error) {
 	if ws.LatestBuild.Job.Status == codersdk.ProvisionerJobRunning {
 		// Already running or starting, wait for it
 		if err := c.waitForBuild(ctx, ws.LatestBuild.ID); err != nil {
@@ -122,6 +148,48 @@ func (c *Client) ensureRunning(ctx context.Context, ws codersdk.Workspace) (*cod
 	return &updatedWs, nil
 }
 
+func (c *Client) StopWorkspace(ctx context.Context, ws codersdk.Workspace) (*codersdk.Workspace, error) {
+	if ws.LatestBuild.Job.Status == codersdk.ProvisionerJobRunning {
+		// Wait for current build to finish before stopping
+		if err := c.waitForBuild(ctx, ws.LatestBuild.ID); err != nil {
+			return nil, err
+		}
+		// Refresh
+		updatedWs, err := c.sdk.Workspace(ctx, ws.ID)
+		if err != nil {
+			return nil, err
+		}
+		ws = updatedWs
+	}
+
+	if ws.LatestBuild.Transition == codersdk.WorkspaceTransitionStop && ws.LatestBuild.Job.Status == codersdk.ProvisionerJobSucceeded {
+		// Already stopped
+		return &ws, nil
+	}
+
+	// Stop the workspace
+	build, err := c.sdk.CreateWorkspaceBuild(ctx, ws.ID, codersdk.CreateWorkspaceBuildRequest{
+		Transition: codersdk.WorkspaceTransitionStop,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to stop workspace: %w", err)
+	}
+
+	if err := c.waitForBuild(ctx, build.ID); err != nil {
+		return nil, fmt.Errorf("failed to wait for stop: %w", err)
+	}
+
+	updatedWs, err := c.sdk.Workspace(ctx, ws.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &updatedWs, nil
+}
+
+func (c *Client) ensureRunning(ctx context.Context, ws codersdk.Workspace) (*codersdk.Workspace, error) {
+	return c.StartWorkspace(ctx, ws)
+}
+
 func (c *Client) waitForBuild(ctx context.Context, buildID uuid.UUID) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -156,10 +224,18 @@ func (c *Client) ConnectToWorkspaceAgent(ctx context.Context, ws codersdk.Worksp
 			if agent.Status == codersdk.WorkspaceAgentConnected && agent.LifecycleState == codersdk.WorkspaceAgentLifecycleReady {
 				// Connect to the agent
 				client := workspacesdk.New(c.sdk)
-				conn, err := client.DialAgent(ctx, agent.ID, nil)
+				agentConn, err := client.DialAgent(ctx, agent.ID, nil)
 				if err != nil {
 					return nil, fmt.Errorf("failed to dial agent: %w", err)
 				}
+
+				// Get SSH connection
+				conn, err := agentConn.SSH(ctx)
+				if err != nil {
+					agentConn.Close()
+					return nil, fmt.Errorf("failed to establish SSH connection: %w", err)
+				}
+
 				return conn, nil
 			}
 		}

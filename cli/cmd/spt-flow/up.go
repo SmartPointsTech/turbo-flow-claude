@@ -41,12 +41,25 @@ var upCmd = &cobra.Command{
 			return fmt.Errorf("failed to create client: %w", err)
 		}
 
+		// Parse flags
+		dotfilesURL, _ := cmd.Flags().GetString("dotfiles-url")
+
 		fmt.Printf("Provisioning workspace '%s'...\n", workspaceName)
 
 		// Ensure workspace exists and is running
 		// TODO: Make template name configurable
 		templateName := "coder-template"
-		ws, err := client.EnsureWorkspace(cmd.Context(), workspaceName, templateName)
+
+		params := map[string]string{}
+		if dotfilesURL != "" {
+			params["dotfiles_url"] = dotfilesURL
+		}
+
+		ws, err := client.EnsureWorkspace(cmd.Context(), coder.EnsureWorkspaceOptions{
+			Name:         workspaceName,
+			TemplateName: templateName,
+			Parameters:   params,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to provision workspace: %w", err)
 		}
@@ -60,5 +73,6 @@ var upCmd = &cobra.Command{
 }
 
 func init() {
+	upCmd.Flags().String("dotfiles-url", "", "URL of a dotfiles repository to install")
 	rootCmd.AddCommand(upCmd)
 }

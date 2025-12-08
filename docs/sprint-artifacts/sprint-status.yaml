@@ -47,21 +47,21 @@ development_status:
   1-3-automated-version-check: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-terraform-template-definition: backlog
-  2-2-workspace-provisioning-up: backlog
-  2-3-ssh-connection-handler-ssh: backlog
-  2-4-lifecycle-management-ttl-auto-stop: backlog
+  epic-2: done
+  2-1-terraform-template-definition: done
+  2-2-workspace-provisioning-up: done
+  2-3-ssh-connection-handler-ssh: done
+  2-4-lifecycle-management-ttl-auto-stop: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-fat-image-definition-build-pipeline: backlog
-  3-2-nested-virtualization-configuration: backlog
-  3-3-web-ide-extensions: backlog
+  epic-3: done
+  3-1-fat-image-definition-build-pipeline: done
+  3-2-nested-virtualization-configuration: done
+  3-3-web-ide-extensions: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-dotfiles-personalization-hook: backlog
-  4-2-secret-injection-ssh-git: backlog
-  4-3-data-persistence-strategy: backlog
+  epic-4: done
+  4-1-dotfiles-personalization-hook: done
+  4-2-secret-injection-ssh-git: done
+  4-3-data-persistence-strategy: done
   epic-4-retrospective: optional
