@@ -1,6 +1,6 @@
 # Story 1.1: CLI Skeleton & Cross-Platform Build
 
-Status: Ready for Review
+Status: Done
 
 ## Story
 
