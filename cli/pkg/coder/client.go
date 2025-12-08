@@ -3,10 +3,12 @@ package coder
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"time"
 
 	"github.com/coder/coder/v2/codersdk"
+	"github.com/coder/coder/v2/codersdk/workspacesdk"
 	"github.com/google/uuid"
 )
 
@@ -145,6 +147,24 @@ func (c *Client) waitForBuild(ctx context.Context, buildID uuid.UUID) error {
 			}
 		}
 	}
+}
+
+func (c *Client) ConnectToWorkspaceAgent(ctx context.Context, ws codersdk.Workspace) (net.Conn, error) {
+	// Find the first running resource with an agent
+	for _, res := range ws.LatestBuild.Resources {
+		for _, agent := range res.Agents {
+			if agent.Status == codersdk.WorkspaceAgentConnected && agent.LifecycleState == codersdk.WorkspaceAgentLifecycleReady {
+				// Connect to the agent
+				client := workspacesdk.New(c.sdk)
+				conn, err := client.DialAgent(ctx, agent.ID, nil)
+				if err != nil {
+					return nil, fmt.Errorf("failed to dial agent: %w", err)
+				}
+				return conn, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("no connected agent found")
 }
 
 func ptr[T any](v T) *T {
