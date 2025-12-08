@@ -8,16 +8,16 @@ import (
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	versionStr = "dev"
+	commit     = "none"
+	date       = "unknown"
 )
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of spt-flow",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("spt-flow version %s, commit %s, built at %s, %s/%s\n", version, commit, date, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("spt-flow version %s, commit %s, built at %s, %s/%s\n", versionStr, commit, date, runtime.GOOS, runtime.GOARCH)
 	},
 }
 

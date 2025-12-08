@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/smartpointstech/spt-flow/cli/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -13,6 +14,13 @@ var rootCmd = &cobra.Command{
 	Short:        "spt-flow is a CLI for managing Coder workspaces",
 	Long:         `spt-flow is a CLI for managing Coder workspaces, providing a unified interface for provisioning, connecting, and managing development environments.`,
 	SilenceUsage: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		go func() {
+			if msg := version.CheckForUpdate(versionStr); msg != "" {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}()
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

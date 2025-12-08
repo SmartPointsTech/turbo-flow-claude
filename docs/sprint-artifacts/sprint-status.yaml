@@ -44,7 +44,7 @@ development_status:
   epic-1: in-progress
   1-1-cli-skeleton-cross-platform-build: done
   1-2-configuration-initialization-init: done
-  1-3-automated-version-check: backlog
+  1-3-automated-version-check: done
   epic-1-retrospective: optional
 
   epic-2: backlog
